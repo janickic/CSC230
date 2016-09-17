@@ -1,0 +1,228 @@
+//Same project as A3 but implemented in C
+
+/*
+ * Student: Camille Janicki
+ * a4.c
+ *
+ * This assignment scrolls the first and second message on the lcd screen. 
+ * The up-button pauses the scrolling (must hold down up button)
+ * The bottom button continues the scrolling
+ * The right button increases the scroll speed
+ * The left button decreases the scroll speed
+ */
+
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#include "main.h"
+#include "lcd_drv.h"
+
+// These are included by the LCD driver code, so 
+// we don't need to include them here.
+// #include <avr/io.h>
+// #include <util/delay.h>
+
+#define MAX_SL	17
+
+int del_speed=500;
+char *l1ptr;
+char *l2ptr;
+char *msg1="First line ";
+char *msg2="Second message ";
+
+
+//This function copies 16 characters from the message to the line
+//This function does not set the null terminator
+void cpy_buffer(char* src, char* dest, char *msg)
+{
+	int i;
+	for( i=0; i<MAX_SL-1; i++)
+	{
+		//Null terminator reached
+		if(*src == '\0') {	
+			src=msg;
+		}
+
+		*dest=*src;
+		dest++;
+		src++;
+	}
+	
+} 	
+
+//This function moves the line pointer across the message
+//Resets at the beginning of the message if a null terminator is reached
+void mov_pointers()
+{
+
+	//Null terminator reached
+	if(*l1ptr=='\0')
+		{
+			l1ptr=msg1;
+		}
+		l1ptr++;
+
+
+	//Null terminator reached		
+	if(*l2ptr=='\0')
+		{
+			l2ptr=msg2;
+		}
+		l2ptr++;
+}
+
+//This function checks what button is being pressed and returns an int depending on what button is being pressed
+/*
+* Result return:
+*				0- none
+*				1-right
+*				2-up
+*				3-down
+*				4-left
+*				5-select
+*/
+int check_button()
+{
+	int result;
+
+	// start conversion
+	ADCSRA |= 0x40;
+	// bit 6 in ADCSRA is 1 while conversion is in progress
+	// 0b0100 0000
+	// 0x40
+	while (ADCSRA & 0x40) {
+			;
+	}
+
+	unsigned int val = ADCL;
+	unsigned int val2 = ADCH;
+
+	val += (val2 << 8);
+	
+	if (val > 1000 )	//no button pressed
+	{
+		result=0;
+	}
+
+   	if (val < 50) 				//right button
+  		result=1;
+   	else if (val < 195)			//up button
+		result=2;
+   	else if (val < 380)  		//down button
+ 		result=3;
+   	else if (val < 555)  		//Left Button
+  		result=4;
+   	else 						//Select Button
+	  	result=5;
+	
+
+	return result;
+
+} 
+
+//This function changes the scroll speed depending on what button is being pressed
+/*
+* Up-stop scrolling
+* Down-continue scrolling
+* Right-increase scrolling
+* Left-decrease scrolling
+*/
+void button_react(int result)
+{
+	int temp=0;
+
+	if(result==1)
+		del_speed=del_speed-100;
+	else if(result==2)
+	{
+		temp=check_button();
+		while(temp!=3)
+		{
+			temp=check_button();
+		}
+	}
+	else if(result==4)		
+		del_speed= del_speed+100;
+	else
+		del_speed=del_speed;
+
+
+}
+
+//Main
+//Uses an infinite loop to scroll messages forever
+int main( void )
+{
+
+	char line1[MAX_SL];
+
+	line1[MAX_SL-1]='\0';	//putting null terminator at the end of line1
+	l1ptr=msg1;		//making line1ptr point to first memory location of msg1
+
+	char line2[MAX_SL];
+
+	line2[MAX_SL-1]='\0';	//putting null terminator at the end of line2
+	l2ptr=msg2;		//making line2ptr point to first memory location of msg2
+
+	//initializing lcd screen
+	lcd_init();	
+
+
+	/* enable A2D: */
+
+	/* ADCSRA:
+	 * bit 7 - ADC enable
+	 * bit 6 - ADC start conversion
+	 * bit 5 - ADC auto trigger enable
+	 * bit 4 - ADC interrupt flag
+	 * bit 3 - ADC interrupt enable
+	 * bit 2 |
+	 * bit 1 |- ADC prescalar select bits
+	 * bit 0 |
+	 * 
+	 * we want:
+	 * 0b1000 0111
+	 * which is:
+	 * 0x87
+	 */
+	ADCSRA = 0x87;
+
+	/* ADMUX - ADC Multiplexer Selection Register
+	 *
+	 * Select ADC0
+     */
+	ADMUX = 0x40;
+
+	for (;;)	//Do forever
+	{
+		//First Line
+		lcd_xy(0,0);
+		lcd_blank(MAX_SL);
+
+		cpy_buffer(l1ptr, line1, msg1);
+
+		lcd_xy(0,0);
+		lcd_puts(line1);
+
+		//Second Line
+		lcd_xy(0,1);
+		lcd_blank(MAX_SL);
+
+	
+		cpy_buffer(l2ptr, line2, msg2);
+
+		lcd_xy(0,1);
+		lcd_puts(line2);
+
+		//Moving pointers
+		mov_pointers();
+		
+		//Checking buttons
+		int btn = check_button();
+		button_react(btn);
+		_delay_ms(del_speed);
+	}	
+
+
+}
